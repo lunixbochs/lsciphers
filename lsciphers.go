@@ -2,6 +2,7 @@ package main
 
 import (
     "encoding/binary"
+    "flag"
     "fmt"
     "io"
     "net"
@@ -11,9 +12,31 @@ import (
     "sync"
 )
 
+var startTLS = ""
+
+func Dial(network, address string) (net.Conn, error) {
+    conn, err := net.Dial(network, address)
+    if err != nil {
+        return nil, err
+    }
+    switch startTLS {
+    case "xmpp":
+        return StartXmppTLS(conn)
+    default:
+        return conn, nil
+    }
+}
+
 func main() {
-    if len(os.Args) < 2 {
-        fmt.Printf("Usage: %s <host>[:port]\n", os.Args[0])
+    flag.Usage = func() {
+        fmt.Printf("Usage: %s [options] <host>[:port]\n", os.Args[0])
+        fmt.Println("Options:")
+        flag.PrintDefaults()
+    }
+    flag.StringVar(&startTLS, "start", "", "Perform StartTLS with protocol (accepts: xmpp)")
+    flag.Parse()
+    if len(flag.Args()) < 1 {
+        flag.Usage()
         os.Exit(1)
     }
     // print a newline on ^C
@@ -25,7 +48,7 @@ func main() {
             os.Exit(1)
         }
     }()
-    for _, target := range os.Args[1:] {
+    for _, target := range flag.Args() {
         if _, _, err := net.SplitHostPort(target); err != nil {
             target = net.JoinHostPort(target, "443")
         }
@@ -83,25 +106,25 @@ func list_tls12(target string, ret chan string, wg *sync.WaitGroup, bar *Progres
     defer wg.Done()
 
     TLS11_HELLO_TEMPLATE := []byte{
-        0x16,                       // content type: handshake
-        0x03, 0x03,                 // version: tls 1.2
-        0x00, 0x2d,                 // length: 46
-        0x01,                       // handshake type: client hello
-        0x00, 0x00, 0x29,           // length: 42
-        0x03, 0x03,                 // version: tls 1.2
-        0xde, 0xad, 0xbe, 0xef,     // random: timestamp
-        0xde, 0xad, 0xbe, 0xef,     // random: 28 bytes
+        0x16,       // content type: handshake
+        0x03, 0x03, // version: tls 1.2
+        0x00, 0x2d, // length: 46
+        0x01,             // handshake type: client hello
+        0x00, 0x00, 0x29, // length: 42
+        0x03, 0x03, // version: tls 1.2
+        0xde, 0xad, 0xbe, 0xef, // random: timestamp
+        0xde, 0xad, 0xbe, 0xef, // random: 28 bytes
         0xde, 0xad, 0xbe, 0xef,
         0xde, 0xad, 0xbe, 0xef,
         0xde, 0xad, 0xbe, 0xef,
         0xde, 0xad, 0xbe, 0xef,
         0xde, 0xad, 0xbe, 0xef,
         0xde, 0xad, 0xbe, 0xef,
-        0x00,                       // session id length
-        0x00, 0x02,                 // cipher suites length
-        0x00, 0x00,                 // cipher suites (to be replaced) (location is [46, 47])
-        0x01,                       // compression methods length
-        0x00,                       // compression methods
+        0x00,       // session id length
+        0x00, 0x02, // cipher suites length
+        0x00, 0x00, // cipher suites (to be replaced) (location is [46, 47])
+        0x01, // compression methods length
+        0x00, // compression methods
     }
 
     bar.AddTotal(len(TLS_CIPHERS))
@@ -117,7 +140,7 @@ func list_tls12(target string, ret chan string, wg *sync.WaitGroup, bar *Progres
         TLS11_HELLO[46] = cipherBytes[0]
         TLS11_HELLO[47] = cipherBytes[1]
 
-        conn, err := net.Dial("tcp", target)
+        conn, err := Dial("tcp", target)
         if err != nil {
             fmt.Println(err)
             return
@@ -145,25 +168,25 @@ func list_tls11(target string, ret chan string, wg *sync.WaitGroup, bar *Progres
     defer wg.Done()
 
     TLS10_HELLO_TEMPLATE := []byte{
-        0x16,                       // content type: handshake
-        0x03, 0x02,                 // version: tls 1.1
-        0x00, 0x2d,                 // length: 46
-        0x01,                       // handshake type: client hello
-        0x00, 0x00, 0x29,           // length: 42
-        0x03, 0x02,                 // version: tls 1.1
-        0xde, 0xad, 0xbe, 0xef,     // random: timestamp
-        0xde, 0xad, 0xbe, 0xef,     // random: 28 bytes
+        0x16,       // content type: handshake
+        0x03, 0x02, // version: tls 1.1
+        0x00, 0x2d, // length: 46
+        0x01,             // handshake type: client hello
+        0x00, 0x00, 0x29, // length: 42
+        0x03, 0x02, // version: tls 1.1
+        0xde, 0xad, 0xbe, 0xef, // random: timestamp
+        0xde, 0xad, 0xbe, 0xef, // random: 28 bytes
         0xde, 0xad, 0xbe, 0xef,
         0xde, 0xad, 0xbe, 0xef,
         0xde, 0xad, 0xbe, 0xef,
         0xde, 0xad, 0xbe, 0xef,
         0xde, 0xad, 0xbe, 0xef,
         0xde, 0xad, 0xbe, 0xef,
-        0x00,                       // session id length
-        0x00, 0x02,                 // cipher suites length
-        0x00, 0x00,                 // cipher suites (to be replaced) (location is [46, 47])
-        0x01,                       // compression methods length
-        0x00,                       // compression methods
+        0x00,       // session id length
+        0x00, 0x02, // cipher suites length
+        0x00, 0x00, // cipher suites (to be replaced) (location is [46, 47])
+        0x01, // compression methods length
+        0x00, // compression methods
     }
 
     bar.AddTotal(len(TLS_CIPHERS))
@@ -179,7 +202,7 @@ func list_tls11(target string, ret chan string, wg *sync.WaitGroup, bar *Progres
         TLS10_HELLO[46] = cipherBytes[0]
         TLS10_HELLO[47] = cipherBytes[1]
 
-        conn, err := net.Dial("tcp", target)
+        conn, err := Dial("tcp", target)
         if err != nil {
             fmt.Println(err)
             return
@@ -206,25 +229,25 @@ func list_tls10(target string, ret chan string, wg *sync.WaitGroup, bar *Progres
     defer wg.Done()
 
     TLS10_HELLO_TEMPLATE := []byte{
-        0x16,                       // content type: handshake
-        0x03, 0x01,                 // version: tls 1.0
-        0x00, 0x2d,                 // length: 46
-        0x01,                       // handshake type: client hello
-        0x00, 0x00, 0x29,           // length: 42
-        0x03, 0x01,                 // version: tls 1.0
-        0xde, 0xad, 0xbe, 0xef,     // random: timestamp
-        0xde, 0xad, 0xbe, 0xef,     // random: 28 bytes
+        0x16,       // content type: handshake
+        0x03, 0x01, // version: tls 1.0
+        0x00, 0x2d, // length: 46
+        0x01,             // handshake type: client hello
+        0x00, 0x00, 0x29, // length: 42
+        0x03, 0x01, // version: tls 1.0
+        0xde, 0xad, 0xbe, 0xef, // random: timestamp
+        0xde, 0xad, 0xbe, 0xef, // random: 28 bytes
         0xde, 0xad, 0xbe, 0xef,
         0xde, 0xad, 0xbe, 0xef,
         0xde, 0xad, 0xbe, 0xef,
         0xde, 0xad, 0xbe, 0xef,
         0xde, 0xad, 0xbe, 0xef,
         0xde, 0xad, 0xbe, 0xef,
-        0x00,                       // session id length
-        0x00, 0x02,                 // cipher suites length
-        0x00, 0x00,                 // cipher suites (to be replaced) (location is [46, 47])
-        0x01,                       // compression methods length
-        0x00,                       // compression methods
+        0x00,       // session id length
+        0x00, 0x02, // cipher suites length
+        0x00, 0x00, // cipher suites (to be replaced) (location is [46, 47])
+        0x01, // compression methods length
+        0x00, // compression methods
     }
 
     bar.AddTotal(len(TLS_CIPHERS))
@@ -240,7 +263,7 @@ func list_tls10(target string, ret chan string, wg *sync.WaitGroup, bar *Progres
         TLS10_HELLO[46] = cipherBytes[0]
         TLS10_HELLO[47] = cipherBytes[1]
 
-        conn, err := net.Dial("tcp", target)
+        conn, err := Dial("tcp", target)
         if err != nil {
             fmt.Println(err)
             return
@@ -300,25 +323,25 @@ func list_ssl3(target string, ret chan string, wg *sync.WaitGroup, bar *Progress
     }
 
     SSL3_HELLO_TEMPLATE := []byte{
-        0x16,                       // content type: handshake
-        0x03, 0x00,                 // version: ssl 3.0
-        0x00, 0x2d,                 // length: 46
-        0x01,                       // handshake type: client hello
-        0x00, 0x00, 0x29,           // length: 42
-        0x03, 0x00,                 // version: ssl 3.0
-        0xde, 0xad, 0xbe, 0xef,     // random: timestamp
-        0xde, 0xad, 0xbe, 0xef,     // random: 28 bytes
+        0x16,       // content type: handshake
+        0x03, 0x00, // version: ssl 3.0
+        0x00, 0x2d, // length: 46
+        0x01,             // handshake type: client hello
+        0x00, 0x00, 0x29, // length: 42
+        0x03, 0x00, // version: ssl 3.0
+        0xde, 0xad, 0xbe, 0xef, // random: timestamp
+        0xde, 0xad, 0xbe, 0xef, // random: 28 bytes
         0xde, 0xad, 0xbe, 0xef,
         0xde, 0xad, 0xbe, 0xef,
         0xde, 0xad, 0xbe, 0xef,
         0xde, 0xad, 0xbe, 0xef,
         0xde, 0xad, 0xbe, 0xef,
         0xde, 0xad, 0xbe, 0xef,
-        0x00,                       // session id length
-        0x00, 0x02,                 // cipher suites length
-        0x00, 0x00,                 // cipher suites (to be replaced) (location is [46, 47])
-        0x01,                       // compression methods length
-        0x00,                       // compression methods
+        0x00,       // session id length
+        0x00, 0x02, // cipher suites length
+        0x00, 0x00, // cipher suites (to be replaced) (location is [46, 47])
+        0x01, // compression methods length
+        0x00, // compression methods
     }
 
     bar.AddTotal(len(SSL3_CIPHERS))
@@ -334,7 +357,7 @@ func list_ssl3(target string, ret chan string, wg *sync.WaitGroup, bar *Progress
         SSL3_HELLO[46] = cipherBytes[0]
         SSL3_HELLO[47] = cipherBytes[1]
 
-        conn, err := net.Dial("tcp", target)
+        conn, err := Dial("tcp", target)
         if err != nil {
             fmt.Println(err)
             return
@@ -361,36 +384,36 @@ func list_ssl2(target string, ret chan string, wg *sync.WaitGroup, bar *Progress
     defer wg.Done()
 
     SSL2_HELLO := []byte{
-        0x80, 0x2e,                 // record length
-        0x01,                       // client hello
-        0x00, 0x02,                 // version
-        0x00, 0x15,                 // cipher specs length
-        0x00, 0x00,                 // session id length
-        0x00, 0x10,                 // challenge length
-        0x01, 0x00, 0x80,           // SSL_CK_RC4_128_WITH_MD5
-        0x02, 0x00, 0x80,           // SSL_CK_RC4_128_EXPORT40_WITH_MD5
-        0x03, 0x00, 0x80,           // SSL_CK_RC2_128_CBC_WITH_MD5
-        0x04, 0x00, 0x80,           // SSL_CK_RC2_128_CBC_EXPORT40_WITH_MD5
-        0x05, 0x00, 0x80,           // SSL_CK_IDEA_128_CBC_WITH_MD5
-        0x06, 0x00, 0x40,           // SSL_CK_DES_64_CBC_WITH_MD5
-        0x07, 0x00, 0xc0,           // SSL_CK_DES_192_EDE3_CBC_WITH_MD5
-        0xde, 0xad, 0xbe, 0xef,     // challenge data
+        0x80, 0x2e, // record length
+        0x01,       // client hello
+        0x00, 0x02, // version
+        0x00, 0x15, // cipher specs length
+        0x00, 0x00, // session id length
+        0x00, 0x10, // challenge length
+        0x01, 0x00, 0x80, // SSL_CK_RC4_128_WITH_MD5
+        0x02, 0x00, 0x80, // SSL_CK_RC4_128_EXPORT40_WITH_MD5
+        0x03, 0x00, 0x80, // SSL_CK_RC2_128_CBC_WITH_MD5
+        0x04, 0x00, 0x80, // SSL_CK_RC2_128_CBC_EXPORT40_WITH_MD5
+        0x05, 0x00, 0x80, // SSL_CK_IDEA_128_CBC_WITH_MD5
+        0x06, 0x00, 0x40, // SSL_CK_DES_64_CBC_WITH_MD5
+        0x07, 0x00, 0xc0, // SSL_CK_DES_192_EDE3_CBC_WITH_MD5
+        0xde, 0xad, 0xbe, 0xef, // challenge data
         0xde, 0xad, 0xbe, 0xef,
         0xde, 0xad, 0xbe, 0xef,
         0xde, 0xad, 0xbe, 0xef,
     }
 
     SSL2_CIPHERS := map[uint32]string{
-        0x010080:     "SSL_CK_RC4_128_WITH_MD5",
-        0x020080:     "SSL_CK_RC4_128_EXPORT40_WITH_MD5",
-        0x030080:     "SSL_CK_RC2_128_CBC_WITH_MD5",
-        0x040080:     "SSL_CK_RC2_128_CBC_EXPORT40_WITH_MD5",
-        0x050080:     "SSL_CK_IDEA_128_CBC_WITH_MD5",
-        0x060040:     "SSL_CK_DES_64_CBC_WITH_MD5",
-        0x0700c0:     "SSL_CK_DES_192_EDE3_CBC_WITH_MD5",
+        0x010080: "SSL_CK_RC4_128_WITH_MD5",
+        0x020080: "SSL_CK_RC4_128_EXPORT40_WITH_MD5",
+        0x030080: "SSL_CK_RC2_128_CBC_WITH_MD5",
+        0x040080: "SSL_CK_RC2_128_CBC_EXPORT40_WITH_MD5",
+        0x050080: "SSL_CK_IDEA_128_CBC_WITH_MD5",
+        0x060040: "SSL_CK_DES_64_CBC_WITH_MD5",
+        0x0700c0: "SSL_CK_DES_192_EDE3_CBC_WITH_MD5",
     }
 
-    conn, err := net.Dial("tcp", target)
+    conn, err := Dial("tcp", target)
     if err != nil {
         fmt.Println(err)
         return
@@ -438,7 +461,7 @@ func list_ssl2(target string, ret chan string, wg *sync.WaitGroup, bar *Progress
     }
 
     // each cipher is 3 bytes, so cipher spec length % 3 should == 0
-    if cipherSpecLength % 3 != 0 {
+    if cipherSpecLength%3 != 0 {
         return
     }
 
@@ -447,7 +470,7 @@ func list_ssl2(target string, ret chan string, wg *sync.WaitGroup, bar *Progress
     // [11: 11+certLength] - certificate data
 
     // [11+certLength: (11+certLength) + cipherSpecLength] - cipher spec data
-    cipherSpecData := serverHello[11 + certLength: 11 + certLength + cipherSpecLength]
+    cipherSpecData := serverHello[11+certLength : 11+certLength+cipherSpecLength]
 
     for i := uint16(0); i < cipherSpecLength; i += 3 {
         cipherBytes := make([]byte, 4)
@@ -461,7 +484,6 @@ func list_ssl2(target string, ret chan string, wg *sync.WaitGroup, bar *Progress
 
     return
 }
-
 
 var TLS_CIPHERS = map[uint16]string{
     0x0000: "TLS_NULL_WITH_NULL_NULL",
@@ -783,4 +805,3 @@ var TLS_CIPHERS = map[uint16]string{
     0xC0AE: "TLS_ECDHE_ECDSA_WITH_AES_128_CCM_8",
     0xC0AF: "TLS_ECDHE_ECDSA_WITH_AES_256_CCM_8",
 }
-
