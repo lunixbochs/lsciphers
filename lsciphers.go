@@ -10,12 +10,17 @@ import (
     "os/signal"
     "sort"
     "sync"
+    "time"
 )
 
 var startTLS = ""
 
 func Dial(network, address string) (net.Conn, error) {
-    conn, err := net.Dial(network, address)
+    conn, err := net.DialTimeout(network, address, 10*time.Second)
+    if err != nil {
+        return nil, err
+    }
+    err = conn.SetDeadline(time.Now().Add(10 * time.Second))
     if err != nil {
         return nil, err
     }
